@@ -1,0 +1,125 @@
+---
+title: "Machine Learning Project Assignment"
+author: "dds63b"
+date: "05/24/2015"
+output: html_document
+---
+
+# Introduction
+
+From Johns Hopkins Machine Learning Project Assignment:  
+
+"Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, [the] goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways:  
+
+* Class A: exactly according to the specification 
+* Class B: throwing the elbows to the front
+* Class C: lifting the dumbbell only halfway
+* Class D: lowering the dumbbell only halfway
+* Class E: and throwing the hips to the front
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)."  
+
+## Project goal  
+* predict the manner in which they did the exercise. This is the "classe" variable in the training set. With:  
+   + a link to a Github repo with the R markdown and compiled HTML file describing the analysis (< 2000 words and the number of figures to be less than 5).
+   + apply your machine learning algorithm to the 20 test cases available in the test data above.
+
+# Loading and processing data
+``` {r}
+# Loading libraries
+library(caret); library(rpart); library(rpart.plot); library(RColorBrewer); library(rattle)
+library(randomForest)
+
+# Set seed for reproduceablity
+set.seed(123)
+
+# Loading files, without NAs
+setwd("/home/danilo/Coursera/MachineLearning/Project")
+trainURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+local.trainingdata <- 'trainingdata.csv'
+local.testingdata <- 'testingdata.csv'
+
+if (! file.exists(local.trainingdata)) {
+        download.file(trainURL,
+                      destfile = local.trainingdata, method = 'curl')
+}
+
+if (! file.exists(local.testingdata)) {
+        download.file(testURL,
+                      destfile = local.testingdata, method = 'curl')
+}
+training <- read.csv(local.trainingdata, na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(local.testingdata, na.strings=c("NA","#DIV/0!",""))
+training<-training[,colSums(is.na(training)) == 0]
+testing <-testing[,colSums(is.na(testing)) == 0]
+
+# Verifying dataset
+str(training)
+
+# Remove columns not needed for this project
+training   <-training[,-c(1:7)]
+testing <-testing[,-c(1:7)]
+
+```
+
+# Prediction algorithms
+Partitioning the training data set, we will use 75% of the training dataset just for training the algorithm and 25% for testing it, conditional on the ```classe``` variable.
+```{r}
+trainingsubset <- createDataPartition(y=training$classe, p=0.75, list=FALSE)
+training_train <- training[trainingsubset, ] 
+training_test <- training[-trainingsubset, ]
+```
+Two learning models will be used and we'll verify the one with highest prediction accuracy.  The two chosen are Classification Trees and Random Forest which, according to [Edwin Chen](http://blog.echen.me/2011/04/27/choosing-a-machine-learning-classifier/) "are easy to interpret, handle well feature interactions and they’re non-parametric , so you don’t have to worry about outliers or whether the data is linearly separable (e.g., decision trees easily take care of cases where you have class A at the low end of some feature x, class B in the mid-range of feature x, and A again at the high end)".
+
+## Prediction with classification tree  
+```{r}
+modFitTrain <- rpart(classe ~ ., data=training_train, method="class")
+fancyRpartPlot(modFitTrain)
+```
+
+Prediction algorithm:  
+```{r}
+predictionsTrain <- predict(modFitTrain, training_test, type = "class")
+```
+Test results:
+```{r}
+confusionMatrix(predictionsTrain, training_test$classe)
+```
+
+_Results_: accuracy obtained with classification tree was of 74.86%.
+
+
+## Prediction with random forest:  
+```{r}
+modFitTrainF <- randomForest(classe ~. , data=training_train)
+predictionsTrainF <- predict(modFitTrainF, training_test, type = "class")
+```
+
+Test results:  
+```{r}
+confusionMatrix(predictionsTrainF, training_test$classe)
+```
+_Results_: accuracy obtained with Random Forest was of 99.53%.
+
+## Conclusion
+Random Forest algorithm performed much better than Classification Trees. Accuracy for Random Forest model was almost perfect at over 99%, with an expected out-of-sample error estimated at 0.5% (1 - accuracy for predictions).
+
+# Submitting answers for assignment
+Using Random Forest:
+```{r}
+predictionsFinal <- predict(modFitTrainF, testing, type = "class")
+```
+
+Function to generate files with predictions to submit for assignment:  
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictionsFinal)
+```
